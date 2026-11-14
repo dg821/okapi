@@ -31,13 +31,20 @@ them, so sequencing logic is tested without hardware. Pattern borrowed from the 
 src/okapi/
   clock.py         Clock, SystemClock, SimClock
   coords.py        Az/Alt <-> ICRS conversions (astropy), AltAzPosition, site helpers
+  catalog.py       bright-star catalog, alignment-pair picker
+  pointing.py      PointingModel: rotation fitted from two or more centered stars
+  frames.py        RAW + JSON sidecar writer
   mount/           MountProtocol, FakeMount, (later) serial driver
   camera/          CameraProtocol, FakeCamera, GPhotoCamera
-  cli.py           Typer entry point
+  solve/           SolverProtocol, FakeSolver, (later) ASTAP wrapper
+  sensors/         GpsProtocol, FakeGps, NMEA parser
+  align/           center_on, align_on_star, AlignedMount
+  session/         calibrate: the nightly sequence
+  sim.py           SimRig: a whole simulated telescope for tests and dry runs
+  cli.py           Typer entry point (`okapi calibrate --dry-run`)
 ```
 
-Planned additions: `align/` (alignment, centering, search), `solve/` (plate solving),
-`sensors/` (GPS), `session/` (nightly orchestration).
+Planned additions: spiral search for failed solves, and `session/` night-long orchestration.
 
 ## Phases
 
@@ -46,7 +53,7 @@ Planned additions: `align/` (alignment, centering, search), `solve/` (plate solv
 | 1 Foundation | uv project, clock, coordinates, protocols, fakes, CI | done |
 | 2 Camera | gphoto2 driver with fake-runner tests; frame writer with metadata sidecar | done (driver untested on real T3i) |
 | 3 Mount | Serial driver, protocol-level simulator, slew/track/sync over serial | blocked on A1 |
-| 4 Calibration | GPS time and position; push to mount; two-star alignment (named bright star: slew, solve, offset, nudge, sync) | centering loop and single-star sync done against fakes; star catalog, GPS and two-star sequence next |
+| 4 Calibration | GPS time and position; push to mount; two-star alignment (named bright star: slew, solve, offset, nudge, sync) | done against fakes: catalog (35 stars), GPS/NMEA parser, Pi-side pointing model, two-star alignment with verification (`session/calibrate.py`); real GPS device binding and push-to-mount over serial pending |
 | 5 Search | Spiral search and solve-and-recenter loop | recenter loop done (`align/center.py`); spiral search for failed solves next |
 | 6 Orchestration | `okapi night` runs the whole sequence; logs and resumable state | |
 | 7 Bring-up | Hardware-in-the-loop tests (`-m hardware`), tune timing, verify A1-A5 | |

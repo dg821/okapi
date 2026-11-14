@@ -15,8 +15,16 @@ from astropy.coordinates import EarthLocation, SkyCoord
 from astropy.time import Time
 
 from okapi.clock import Clock
-from okapi.coords import AltAzPosition, altaz_to_radec, radec_to_altaz, wrap180
+from okapi.coords import (
+    AltAzPosition,
+    altaz_to_radec,
+    altaz_to_vec,
+    radec_to_altaz,
+    vec_to_altaz,
+    wrap180,
+)
 from okapi.mount.base import MAX_ALTITUDE, MIN_ALTITUDE, MountError, MountLimitError
+from okapi.pointing import rotation_from_vector
 
 
 @dataclass
@@ -34,10 +42,14 @@ class FakeMount:
         *,
         alignment_error: tuple[u.Quantity, u.Quantity] = (0 * u.deg, 0 * u.deg),
         slew_rate: u.Quantity = 3 * u.deg / u.s,
+        frame_rotation: tuple[u.Quantity, u.Quantity, u.Quantity] = (0 * u.deg,) * 3,
     ) -> None:
         self._clock = clock
         self._slew_rate = slew_rate
-        self._offset_az, self._offset_alt = alignment_error  # reported = true + offset
+        # reported = rotation(true) + offset. The rotation is a tilted or mis-oriented base (an
+        # unlevel Dobsonian); the offset is an encoder zero error. sync_radec removes the offset.
+        self._offset_az, self._offset_alt = alignment_error
+        self._rot = rotation_from_vector(frame_rotation)
         self._true = AltAzPosition(0 * u.deg, 30 * u.deg)
         self._slew: _Slew | None = None
         self._tracking = False
@@ -85,8 +97,7 @@ class FakeMount:
 
     # -- queries -------------------------------------------------------------------------
     def get_altaz(self) -> AltAzPosition:
-        t = self.true_altaz()
-        return AltAzPosition(t.az + self._offset_az, t.alt + self._offset_alt)
+        return self._to_reported(self.true_altaz())
 
     def true_radec(self) -> SkyCoord:
         """Where the telescope truly points. Simulation only: a real mount cannot tell you."""
@@ -122,8 +133,13 @@ class FakeMount:
         self._true = origin
         self._slew = _Slew(now, now + max(float(duration.to_value(u.s)), 1e-6), origin, true_dest)
 
+    def _to_reported(self, true: AltAzPosition) -> AltAzPosition:
+        r = vec_to_altaz(self._rot @ altaz_to_vec(true))
+        return AltAzPosition(r.az + self._offset_az, r.alt + self._offset_alt)
+
     def _to_true(self, reported: AltAzPosition) -> AltAzPosition:
-        return AltAzPosition(reported.az - self._offset_az, reported.alt - self._offset_alt)
+        p = AltAzPosition(reported.az - self._offset_az, reported.alt - self._offset_alt)
+        return vec_to_altaz(self._rot.T @ altaz_to_vec(p))
 
     def slew_altaz(self, target: AltAzPosition) -> None:
         self._check_limits(target)
@@ -188,5 +204,6 @@ class FakeMount:
         site = self._require_site()
         claimed = radec_to_altaz(target, site, self._clock.now())
         true = self.true_altaz()
-        self._offset_az = wrap180(claimed.az - true.az)
-        self._offset_alt = claimed.alt - true.alt
+        rotated = vec_to_altaz(self._rot @ altaz_to_vec(true))
+        self._offset_az = wrap180(claimed.az - rotated.az)
+        self._offset_alt = claimed.alt - rotated.alt

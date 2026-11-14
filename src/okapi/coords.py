@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import cast
 
 import astropy.units as u
+import numpy as np
 from astropy.coordinates import AltAz, EarthLocation, SkyCoord
 from astropy.time import Time
 from astropy.utils import iers
@@ -32,6 +33,17 @@ class AltAzPosition:
         a = SkyCoord(az=self.az, alt=self.alt, frame=AltAz())
         b = SkyCoord(az=other.az, alt=other.alt, frame=AltAz())
         return a.separation(b).to(u.deg)
+
+
+def altaz_to_vec(pos: AltAzPosition) -> np.ndarray:
+    """Unit vector with x toward az=0 (north) on the horizon, y toward east, z up."""
+    az, alt = pos.az.to_value(u.rad), pos.alt.to_value(u.rad)
+    return np.array([np.cos(alt) * np.cos(az), np.cos(alt) * np.sin(az), np.sin(alt)])
+
+
+def vec_to_altaz(v: np.ndarray) -> AltAzPosition:
+    x, y, z = v / np.linalg.norm(v)
+    return AltAzPosition(np.arctan2(y, x) * u.rad, np.arcsin(np.clip(z, -1.0, 1.0)) * u.rad)
 
 
 def wrap180(angle: u.Quantity) -> u.Quantity:
