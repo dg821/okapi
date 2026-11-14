@@ -1,0 +1,56 @@
+[project]
+name = "okapi"
+version = "0.1.0"
+description = "Raspberry Pi control of an Orion XT10g GoTo Dobsonian and a Canon T3i"
+requires-python = ">=3.11"
+dependencies = [
+    "astropy>=8.0.2",
+    "numpy>=2.4.6",
+    "typer>=0.29.1",
+]
+
+[project.scripts]
+okapi = "okapi.cli:app"
+
+[build-system]
+requires = ["uv_build>=0.13.5,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.170.15",
+    "pre-commit>=4.7.0",
+    "pyright>=1.1.414",
+    "pytest>=9.2.0",
+    "ruff>=0.17.5",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "NPY", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["--import-mode=importlib", "-ra"]
+markers = [
+    "hardware: needs the real telescope or camera attached; deselect with -m 'not hardware'",
+]
+
+[tool.pyright]
+include = ["src", "tests"]
+exclude = ["**/.venv", "**/__pycache__"]
+pythonVersion = "3.11"
+typeCheckingMode = "standard"
+# astropy ships no usable type information; these rules only add noise for astropy-heavy code.
+reportAttributeAccessIssue = false
+reportArgumentType = false
+reportOperatorIssue = false
+reportOptionalSubscript = false
+reportOptionalMemberAccess = false
+reportOptionalCall = false
+venvPath = "."
+venv = ".venv"
