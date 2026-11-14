@@ -9,19 +9,14 @@ Models what the real telescope does that the software has to cope with:
 """
 
 from dataclasses import dataclass
-from typing import cast
 
 import astropy.units as u
 from astropy.coordinates import EarthLocation, SkyCoord
 from astropy.time import Time
 
 from okapi.clock import Clock
-from okapi.coords import AltAzPosition, altaz_to_radec, radec_to_altaz
+from okapi.coords import AltAzPosition, altaz_to_radec, radec_to_altaz, wrap180
 from okapi.mount.base import MAX_ALTITUDE, MIN_ALTITUDE, MountError, MountLimitError
-
-
-def _wrap180(angle: u.Quantity) -> u.Quantity:
-    return cast(u.Quantity, ((angle + 180 * u.deg) % (360 * u.deg)) - 180 * u.deg)
 
 
 @dataclass
@@ -62,7 +57,7 @@ class FakeMount:
             raise MountError("site not set; call set_site first")
         return self._site
 
-    # -- internal true position ----------------------------------------------------------
+    # -- true position (simulation only; public so the fake solver and tests can read it) --
     def _settle(self) -> None:
         """Finish a slew whose time has elapsed."""
         s = self._slew
@@ -75,12 +70,12 @@ class FakeMount:
     def _lock_target(self) -> None:
         self._target = altaz_to_radec(self._true, self._require_site(), self._clock.now())
 
-    def _true_altaz(self) -> AltAzPosition:
+    def true_altaz(self) -> AltAzPosition:
         self._settle()
         s = self._slew
         if s is not None:
             frac = (self._clock.monotonic() - s.start_mono) / (s.end_mono - s.start_mono)
-            d_az = _wrap180(s.dest.az - s.origin.az)
+            d_az = wrap180(s.dest.az - s.origin.az)
             return AltAzPosition(
                 s.origin.az + frac * d_az, s.origin.alt + frac * (s.dest.alt - s.origin.alt)
             )
@@ -90,8 +85,12 @@ class FakeMount:
 
     # -- queries -------------------------------------------------------------------------
     def get_altaz(self) -> AltAzPosition:
-        t = self._true_altaz()
+        t = self.true_altaz()
         return AltAzPosition(t.az + self._offset_az, t.alt + self._offset_alt)
+
+    def true_radec(self) -> SkyCoord:
+        """Where the telescope truly points. Simulation only: a real mount cannot tell you."""
+        return altaz_to_radec(self.true_altaz(), self._require_site(), self._clock.now())
 
     def get_radec(self) -> SkyCoord:
         return altaz_to_radec(self.get_altaz(), self._require_site(), self._clock.now())
@@ -114,9 +113,9 @@ class FakeMount:
 
     def _begin_slew(self, true_dest: AltAzPosition) -> None:
         """Start moving the true position to ``true_dest``."""
-        origin = self._true_altaz()
+        origin = self.true_altaz()
         duration = (
-            max(abs(_wrap180(true_dest.az - origin.az)), abs(true_dest.alt - origin.alt))
+            max(abs(wrap180(true_dest.az - origin.az)), abs(true_dest.alt - origin.alt))
             / self._slew_rate
         )
         now = self._clock.monotonic()
@@ -133,7 +132,7 @@ class FakeMount:
 
     def _tracking_hold(self) -> None:
         # a slew supersedes the tracked target; it is re-locked on arrival if tracking is on
-        self._true = self._true_altaz()
+        self._true = self.true_altaz()
         self._target = None
 
     def slew_radec(self, target: SkyCoord) -> None:
@@ -143,10 +142,10 @@ class FakeMount:
         dest = radec_to_altaz(target, site, arrival)
         for _ in range(3):
             self._check_limits(dest)
-            origin = self._true_altaz()
+            origin = self.true_altaz()
             true_dest = self._to_true(dest)
             dur = (
-                max(abs(_wrap180(true_dest.az - origin.az)), abs(true_dest.alt - origin.alt))
+                max(abs(wrap180(true_dest.az - origin.az)), abs(true_dest.alt - origin.alt))
                 / self._slew_rate
             )
             arrival = self._clock.now() + dur
@@ -167,7 +166,7 @@ class FakeMount:
             self._clock.sleep(0.1)
 
     def abort(self) -> None:
-        self._true = self._true_altaz()
+        self._true = self.true_altaz()
         self._slew = None
         if self._tracking:
             self._lock_target()
@@ -175,19 +174,19 @@ class FakeMount:
     # -- tracking and alignment ------------------------------------------------------------
     def start_tracking(self) -> None:
         self._require_site()
-        self._true = self._true_altaz()
+        self._true = self.true_altaz()
         self._tracking = True
         if self._slew is None:
             self._lock_target()
 
     def stop_tracking(self) -> None:
-        self._true = self._true_altaz()
+        self._true = self.true_altaz()
         self._tracking = False
         self._target = None
 
     def sync_radec(self, target: SkyCoord) -> None:
         site = self._require_site()
         claimed = radec_to_altaz(target, site, self._clock.now())
-        true = self._true_altaz()
-        self._offset_az = _wrap180(claimed.az - true.az)
+        true = self.true_altaz()
+        self._offset_az = wrap180(claimed.az - true.az)
         self._offset_alt = claimed.alt - true.alt

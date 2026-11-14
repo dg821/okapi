@@ -44,10 +44,10 @@ Planned additions: `align/` (alignment, centering, search), `solve/` (plate solv
 | Phase | Scope | Status |
 |---|---|---|
 | 1 Foundation | uv project, clock, coordinates, protocols, fakes, CI | done |
-| 2 Camera | gphoto2 driver with fake-runner tests; frame writer with metadata sidecar | driver done; writer next |
+| 2 Camera | gphoto2 driver with fake-runner tests; frame writer with metadata sidecar | done (driver untested on real T3i) |
 | 3 Mount | Serial driver, protocol-level simulator, slew/track/sync over serial | blocked on A1 |
-| 4 Calibration | GPS time and position; push to mount; two-star alignment (named bright star: slew, solve, offset, nudge, sync) | |
-| 5 Search | Spiral search and solve-and-recenter loop | |
+| 4 Calibration | GPS time and position; push to mount; two-star alignment (named bright star: slew, solve, offset, nudge, sync) | centering loop and single-star sync done against fakes; star catalog, GPS and two-star sequence next |
+| 5 Search | Spiral search and solve-and-recenter loop | recenter loop done (`align/center.py`); spiral search for failed solves next |
 | 6 Orchestration | `okapi night` runs the whole sequence; logs and resumable state | |
 | 7 Bring-up | Hardware-in-the-loop tests (`-m hardware`), tune timing, verify A1-A5 | |
 

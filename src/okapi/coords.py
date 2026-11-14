@@ -34,6 +34,11 @@ class AltAzPosition:
         return a.separation(b).to(u.deg)
 
 
+def wrap180(angle: u.Quantity) -> u.Quantity:
+    """Wrap an angle difference into [-180, 180) deg so az moves take the short way round."""
+    return cast(u.Quantity, ((angle + 180 * u.deg) % (360 * u.deg)) - 180 * u.deg)
+
+
 def site_from_geodetic(lat_deg: float, lon_deg: float, height_m: float = 0.0) -> EarthLocation:
     """Build a site from geodetic latitude (+N), longitude (+E) and height above the ellipsoid."""
     if not -90 <= lat_deg <= 90:

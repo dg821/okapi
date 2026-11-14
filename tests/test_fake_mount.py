@@ -111,14 +111,14 @@ def test_alignment_error_makes_slew_miss_until_synced(clock, site):
     m.slew_radec(star)
     m.wait_until_settled(120 * u.s)
     # The mount *reports* it is on the star, but truly it is ~0.7 deg away.
-    true_sep = radec_to_altaz(star, site, clock.now()).separation(m._true_altaz())
+    true_sep = radec_to_altaz(star, site, clock.now()).separation(m.true_altaz())
     assert 0.5 < true_sep.to_value(u.deg) < 0.8
     # One sync on the star it is truly looking at removes the offset for the next slew.
-    seen = altaz_to_radec(m._true_altaz(), site, clock.now())
+    seen = altaz_to_radec(m.true_altaz(), site, clock.now())
     m.sync_radec(seen)
     m.slew_radec(star)
     m.wait_until_settled(120 * u.s)
-    true_sep = radec_to_altaz(star, site, clock.now()).separation(m._true_altaz())
+    true_sep = radec_to_altaz(star, site, clock.now()).separation(m.true_altaz())
     assert true_sep.to_value(u.arcsec) < 2.0
 
 
