@@ -19,7 +19,7 @@ Rebel T3i (EOS 600D) from a Raspberry Pi, and automate the nightly setup.
 | A2 | The protocol allows sync/alignment from the Pi | Try it on the real mount | Keep our own pointing model on the Pi (Phase 4 fallback) |
 | A3 | gphoto2 bulb timing works on the T3i | `gphoto2 --get-config shutterspeed`; run the bulb sequence by hand | Keep exposures at or under 30 s, or add a bulb remote cable via a GPIO relay |
 | A4 | T3i reaches focus at the Dobsonian's prime focus | Try it at the focuser | Need a Barlow or other optics; changes the field of view |
-| A5 | Plate solving works on the Pi (ASTAP or astrometry.net) at ~1.1 x 0.7 deg | Solve test frames | Fall back to a larger field or a faster solver |
+| A5 | Plate solving works on the Pi with ASTAP at ~1.1 x 0.7 deg | Install ASTAP + D50 database; run `OKAPI_TEST_FRAME=... uv run pytest -m hardware tests/test_astap_hardware.py -s`. Also confirms: FOCALLEN/XPIXSZ give the right field, the `.wcs` layout parses, `-r 180` solves blind | Pass `fov_height` explicitly, fix the parser, or switch solver |
 
 ## Architecture
 
@@ -36,7 +36,7 @@ src/okapi/
   frames.py        RAW + JSON sidecar writer
   mount/           MountProtocol, FakeMount, (later) serial driver
   camera/          CameraProtocol, FakeCamera, GPhotoCamera
-  solve/           SolverProtocol, FakeSolver, (later) ASTAP wrapper
+  solve/           SolverProtocol, FakeSolver, AstapSolver (RAW decode, FITS, ASTAP CLI)
   sensors/         GpsProtocol, FakeGps, NMEA parser
   align/           center_on, align_on_star, AlignedMount
   session/         calibrate: the nightly sequence
@@ -79,5 +79,6 @@ Mount link: USB-RS232 adapter (FTDI chip) and an RJ-12 cable (or the Sky-Watcher
 adapter if A1 holds).
 Camera: T-ring for Canon EF/EOS and a 1.25"/2" T-adapter, DC coupler plus AC adapter (ACK-E8
 class) so the camera does not run on its battery, a good USB cable.
+Plate solving (software, free): ASTAP command-line build for Linux arm64 plus the D50 star database (fits fields from about 6 to 0.2 deg) in the same folder as the binary; `rawpy` (`uv sync --extra raw`) to decode the T3i's RAW frames.
 Time and location: USB GPS puck (u-blox), optional DS3231 RTC.
 Field use: Pi Wi-Fi hotspot or Ethernet cable, optional dew heater, red light, powered USB hub.

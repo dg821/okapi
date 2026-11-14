@@ -4,7 +4,7 @@ Raspberry Pi control of an Orion XT10g GoTo Dobsonian and a Canon EOS Rebel T3i.
 Read PROJECT_PLAN.md before large changes; assumptions A1-A5 there are unverified.
 
 ## Commands
-- Setup: `uv sync`
+- Setup: `uv sync --extra raw` (rawpy decodes the T3i's RAW frames for plate solving)
 - Test: `uv run pytest -m "not hardware"`   Lint: `uv run ruff check . && uv run ruff format --check .`
 - Types: `uv run pyright`   CLI: `uv run okapi --help`
 

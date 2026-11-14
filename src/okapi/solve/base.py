@@ -15,7 +15,7 @@ class SolveError(RuntimeError):
 @dataclass(frozen=True)
 class SolveResult:
     center: SkyCoord  # ICRS position of the image center
-    n_stars: int  # stars matched, a quality indicator
+    n_stars: int | None = None  # stars matched, a quality indicator, when the solver reports it
 
 
 class SolverProtocol(Protocol):

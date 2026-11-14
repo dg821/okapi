@@ -13,7 +13,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      - run: uv sync
+      - run: uv sync --extra raw
       - name: Lint
         run: uv run ruff check . && uv run ruff format --check .
       - name: Type check
