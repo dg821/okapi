@@ -1,12 +1,13 @@
 """Mount interface. All sequencing code depends on this, never on a serial port directly."""
 
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 import astropy.units as u
 from astropy.coordinates import EarthLocation, SkyCoord
 from astropy.time import Time
 
 from okapi.coords import AltAzPosition
+from okapi.pointing import PointingModel
 
 
 class MountError(RuntimeError):
@@ -19,6 +20,13 @@ class MountLimitError(MountError):
 
 MIN_ALTITUDE = 5 * u.deg
 MAX_ALTITUDE = 89 * u.deg
+
+
+@runtime_checkable
+class PointingModelAware(Protocol):
+    """Mounts that compute their own tracking rates need to know the pointing model."""
+
+    def set_pointing_model(self, model: PointingModel) -> None: ...
 
 
 class MountProtocol(Protocol):

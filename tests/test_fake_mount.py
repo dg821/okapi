@@ -136,3 +136,63 @@ def test_nudge_moves_by_requested_amount(mount, clock):
 def test_set_time_is_recorded(mount, clock):
     mount.set_time(clock.now())
     assert mount.mount_time == clock.now()
+
+
+# -- constant-rate axis motion (what the handset's variable-rate slew does) --------------------
+def test_axis_rates_move_the_reported_position_linearly(mount, clock):
+    mount.slew_altaz(AltAzPosition(100 * u.deg, 40 * u.deg))
+    mount.wait_until_settled(60 * u.s)
+    start = mount.get_altaz()
+    mount.set_axis_rates(0.01 * u.deg / u.s, -0.005 * u.deg / u.s)
+    clock.sleep(30)
+    now = mount.get_altaz()
+    assert (now.az - start.az).to_value(u.deg) == pytest.approx(0.3, abs=1e-6)
+    assert (now.alt - start.alt).to_value(u.deg) == pytest.approx(-0.15, abs=1e-6)
+
+
+def test_axis_rates_follow_the_mounts_own_frame_even_when_tilted(clock, site):
+    m = FakeMount(clock, frame_rotation=(1 * u.deg, -2 * u.deg, 1.5 * u.deg))
+    m.set_site(site)
+    m.slew_altaz(AltAzPosition(100 * u.deg, 40 * u.deg))
+    m.wait_until_settled(60 * u.s)
+    start_reported, start_true = m.get_altaz(), m.true_altaz()
+    m.set_axis_rates(0.02 * u.deg / u.s, 0 * u.deg / u.s)
+    clock.sleep(10)
+    assert (m.get_altaz().az - start_reported.az).to_value(u.deg) == pytest.approx(0.2, abs=1e-6)
+    # the true motion is not the same as the reported motion: that is what tilt means
+    assert m.true_altaz().separation(start_true).to_value(u.deg) > 0
+
+
+def test_zero_rates_stop_the_axes(mount, clock):
+    mount.set_axis_rates(0.01 * u.deg / u.s, 0.01 * u.deg / u.s)
+    clock.sleep(5)
+    mount.set_axis_rates(0 * u.deg / u.s, 0 * u.deg / u.s)
+    here = mount.get_altaz()
+    clock.sleep(60)
+    assert mount.get_altaz().separation(here).to_value(u.arcsec) < 1e-6
+
+
+def test_a_goto_supersedes_rate_motion(mount, clock):
+    mount.set_axis_rates(0.05 * u.deg / u.s, 0 * u.deg / u.s)
+    clock.sleep(5)
+    mount.slew_altaz(AltAzPosition(200 * u.deg, 50 * u.deg))
+    mount.wait_until_settled(60 * u.s)
+    clock.sleep(30)  # no leftover rate motion
+    assert (
+        mount.get_altaz().separation(AltAzPosition(200 * u.deg, 50 * u.deg)).to_value(u.arcsec)
+        < 1e-3
+    )
+
+
+def test_rates_cannot_be_set_during_a_goto(mount):
+    mount.slew_altaz(AltAzPosition(200 * u.deg, 80 * u.deg))
+    with pytest.raises(MountError, match="busy"):
+        mount.set_axis_rates(0.01 * u.deg / u.s, 0 * u.deg / u.s)
+
+
+def test_rates_turn_off_the_fakes_own_tracking(mount, clock, site):
+    mount.slew_altaz(AltAzPosition(100 * u.deg, 40 * u.deg))
+    mount.wait_until_settled(60 * u.s)
+    mount.start_tracking()
+    mount.set_axis_rates(0 * u.deg / u.s, 0 * u.deg / u.s)
+    assert not mount.is_tracking

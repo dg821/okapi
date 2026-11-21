@@ -54,6 +54,9 @@ class FakeMount:
         self._slew: _Slew | None = None
         self._tracking = False
         self._target: SkyCoord | None = None
+        # Constant-rate axis motion (what the handset's variable-rate slew does):
+        # (start, reported position at start, az rate, alt rate), in the mount's own frame.
+        self._rates: tuple[float, AltAzPosition, u.Quantity, u.Quantity] | None = None
         self._site: EarthLocation | None = None
         self.mount_time: Time | None = None
 
@@ -91,9 +94,35 @@ class FakeMount:
             return AltAzPosition(
                 s.origin.az + frac * d_az, s.origin.alt + frac * (s.dest.alt - s.origin.alt)
             )
+        if self._rates is not None:
+            t0, rep0, az_rate, alt_rate = self._rates
+            dt = (self._clock.monotonic() - t0) * u.s
+            return self._to_true(AltAzPosition(rep0.az + az_rate * dt, rep0.alt + alt_rate * dt))
         if self._tracking and self._target is not None:
             return radec_to_altaz(self._target, self._require_site(), self._clock.now())
         return self._true
+
+    def _freeze(self) -> None:
+        """Stop following any rate or tracking and remember where the axes are."""
+        self._true = self.true_altaz()
+        self._rates = None
+
+    def set_axis_rates(self, az_rate: u.Quantity, alt_rate: u.Quantity) -> None:
+        """Drive the mount's own axes at constant rates; zero for both stops them."""
+        if self._slew is not None:
+            self._settle()
+            if self._slew is not None:
+                raise MountError("axes are busy with a goto")
+        self._freeze()
+        self._tracking = False
+        self._target = None
+        if az_rate != 0 * u.deg / u.s or alt_rate != 0 * u.deg / u.s:
+            self._rates = (
+                self._clock.monotonic(),
+                self._to_reported(self._true),
+                az_rate.to(u.deg / u.s),
+                alt_rate.to(u.deg / u.s),
+            )
 
     # -- queries -------------------------------------------------------------------------
     def get_altaz(self) -> AltAzPosition:
@@ -131,6 +160,7 @@ class FakeMount:
         )
         now = self._clock.monotonic()
         self._true = origin
+        self._rates = None
         self._slew = _Slew(now, now + max(float(duration.to_value(u.s)), 1e-6), origin, true_dest)
 
     def _to_reported(self, true: AltAzPosition) -> AltAzPosition:
@@ -148,7 +178,7 @@ class FakeMount:
 
     def _tracking_hold(self) -> None:
         # a slew supersedes the tracked target; it is re-locked on arrival if tracking is on
-        self._true = self.true_altaz()
+        self._freeze()
         self._target = None
 
     def slew_radec(self, target: SkyCoord) -> None:
@@ -182,7 +212,7 @@ class FakeMount:
             self._clock.sleep(0.1)
 
     def abort(self) -> None:
-        self._true = self.true_altaz()
+        self._freeze()
         self._slew = None
         if self._tracking:
             self._lock_target()
@@ -190,13 +220,13 @@ class FakeMount:
     # -- tracking and alignment ------------------------------------------------------------
     def start_tracking(self) -> None:
         self._require_site()
-        self._true = self.true_altaz()
+        self._freeze()
         self._tracking = True
         if self._slew is None:
             self._lock_target()
 
     def stop_tracking(self) -> None:
-        self._true = self.true_altaz()
+        self._freeze()
         self._tracking = False
         self._target = None
 

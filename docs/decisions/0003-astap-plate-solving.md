@@ -21,6 +21,14 @@ Status: accepted (2026-11-14)
 5. **Image center from the WCS, not CRPIX.** The `.wcs` reference pixel need not be the center.
    The solver converts the true center pixel through the WCS.
 
+## Considered and not built: spiral search
+
+A solve does not depend on where the mount thinks it points, so pointing error never calls for
+a search. It would only help when the current field is unsolvable (a cloud gap, an obstruction,
+too few stars), and calibration already handles that by retrying and then moving on to another
+star. Extra code that could not be tested on hardware was not worth it. Revisit if real nights
+show fields that fail to solve where neighboring fields would succeed.
+
 ## Not verified (needs ASTAP on the Pi)
 
 The header-keyword field of view, the `.wcs` layout (parsed both as 80-column cards and as

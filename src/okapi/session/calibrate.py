@@ -99,9 +99,10 @@ def calibrate(
     # -- 2. two-star alignment, falling back to other stars on failure -----------------------
     failed: list[str] = []
     attempts = 0
+    last_reason = ""
 
     def acquire(candidates: list[Star]) -> tuple[Star, CenterResult, AltAzPosition, AltAzPosition]:
-        nonlocal attempts
+        nonlocal attempts, last_reason
         for star in candidates:
             if attempts >= max_star_attempts:
                 break
@@ -119,13 +120,15 @@ def calibrate(
                 )
             except (CenteringError, SolveError, MountError) as e:
                 failed.append(star.name)
+                last_reason = str(e)
                 warnings.append(f"could not center {star.name}: {e}")
                 continue
             t = clock.now()
             true = radec_to_altaz(star.coord(t), site, t)
             return star, result, true, mount.get_altaz()
         raise CalibrationError(
-            f"could not center a star after {attempts} attempts (tried: {', '.join(failed)})"
+            f"could not center a star after {attempts} attempts (tried: {', '.join(failed)}); "
+            f"last error: {last_reason or 'none'}"
         )
 
     first_star, first_res, true1, rep1 = acquire(visible_stars(site, clock.now()))

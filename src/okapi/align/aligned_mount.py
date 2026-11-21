@@ -9,8 +9,9 @@ from astropy.coordinates import EarthLocation, SkyCoord
 from astropy.time import Time
 
 from okapi.clock import Clock
-from okapi.coords import AltAzPosition, altaz_to_radec, radec_to_altaz
-from okapi.mount.base import MountError, MountProtocol
+from okapi.coords import AltAzPosition, altaz_to_radec
+from okapi.mount.base import MountError, MountProtocol, PointingModelAware
+from okapi.mount.radec import slew_radec_via_altaz
 from okapi.pointing import PointingModel
 
 
@@ -29,6 +30,9 @@ class AlignedMount:
         self._site = site
         self._clock = clock
         self._rate = assumed_slew_rate
+        # A mount that drives its own tracking (the SynScan driver) needs the model to aim right.
+        if isinstance(inner, PointingModelAware):
+            inner.set_pointing_model(model)
 
     # -- positions are translated through the model ------------------------------------
     def get_altaz(self) -> AltAzPosition:
@@ -41,12 +45,7 @@ class AlignedMount:
         self._inner.slew_altaz(self._model.to_reported(target))
 
     def slew_radec(self, target: SkyCoord) -> None:
-        # Aim where the target will be when we arrive; estimate the slew time from the distance.
-        dest = radec_to_altaz(target, self._site, self._clock.now())
-        for _ in range(3):
-            lead = dest.separation(self.get_altaz()) / self._rate
-            dest = radec_to_altaz(target, self._site, self._clock.now() + lead)
-        self.slew_altaz(dest)
+        slew_radec_via_altaz(self, target, self._site, self._clock, self._rate)
 
     def sync_radec(self, target: SkyCoord) -> None:
         raise MountError(

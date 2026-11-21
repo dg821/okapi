@@ -11,6 +11,8 @@ from okapi.camera.fake import FakeCamera
 from okapi.clock import SimClock
 from okapi.coords import site_from_geodetic
 from okapi.mount.fake import FakeMount
+from okapi.mount.synscan import SynScanMount
+from okapi.mount.synscan_sim import FakeHandset
 from okapi.sensors.fake import FakeGps
 from okapi.solve.fake import FakeSolver
 
@@ -60,5 +62,49 @@ def make_sim_rig(
             always_fail=gps_always_fail,
             fail_first=gps_fail_first,
         ),
+        settings=ExposureSettings(2 * u.s, 1600),
+    )
+
+
+@dataclass
+class SynScanRig:
+    """The same simulated telescope, but driven through the SynScan serial driver."""
+
+    clock: SimClock
+    site: EarthLocation
+    physical: FakeMount  # the real telescope, as only a simulation can see it
+    handset: FakeHandset
+    mount: SynScanMount
+    camera: FakeCamera
+    solver: FakeSolver
+    gps: FakeGps
+    settings: ExposureSettings
+
+
+def make_synscan_rig(
+    *,
+    start: str = "2026-06-21T04:30:00",
+    frame_rotation: tuple[u.Quantity, u.Quantity, u.Quantity] = (
+        0.5 * u.deg,
+        -0.8 * u.deg,
+        0.9 * u.deg,
+    ),
+    solver_noise: u.Quantity = 2 * u.arcsec,
+    seed: int = 0,
+    **handset_kw,
+) -> SynScanRig:
+    clock = SimClock(Time(start, scale="utc"))
+    site = site_from_geodetic(40.0, -105.0, 1600.0)
+    physical = FakeMount(clock, frame_rotation=frame_rotation)
+    handset = FakeHandset(physical, clock, **handset_kw)
+    return SynScanRig(
+        clock=clock,
+        site=site,
+        physical=physical,
+        handset=handset,
+        mount=SynScanMount(handset, clock),
+        camera=FakeCamera(clock),
+        solver=FakeSolver(physical.true_radec, noise=solver_noise, seed=seed),
+        gps=FakeGps(clock, site),
         settings=ExposureSettings(2 * u.s, 1600),
     )
