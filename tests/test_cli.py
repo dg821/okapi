@@ -18,10 +18,10 @@ def test_calibrate_dry_run_reports_stars_and_accuracy():
     assert "verification on" in result.stdout
 
 
-def test_calibrate_without_dry_run_refuses_because_no_hardware_driver_exists():
+def test_calibrate_without_ports_or_dry_run_refuses():
     result = CliRunner().invoke(app, ["calibrate"])
     assert result.exit_code == 2
-    assert "not implemented" in result.output
+    assert "--mount-port" in result.output
 
 
 def test_mount_info_dry_run_prints_the_handset_report():

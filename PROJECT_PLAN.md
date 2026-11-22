@@ -45,7 +45,10 @@ src/okapi/
   cli.py           Typer entry point (`okapi calibrate --dry-run`)
 ```
 
-Planned addition: `session/` night-long orchestration.
+Added since: `astrometry/` (streak detection, observations, pipeline, identification), `orbits/`
+(two-body propagation, Gauss IOD, least-squares fit, simulator), `targets.py` (fixed, GEO slot,
+state vector, TLE via SGP4), `session/plan.py` and `session/night.py`, `sim_night.py` (a camera that
+renders stars and satellite streaks), `hardware.py` (real drivers wired together).
 
 ## Phases
 
@@ -56,7 +59,10 @@ Planned addition: `session/` night-long orchestration.
 | 3 Mount | SynScan serial driver, simulated handset, Pi-driven tracking, `okapi mount-info` | done against the simulator (ADR 0004); needs the real handset to confirm the items in the bring-up checklist |
 | 4 Calibration | GPS time and position; push to mount; two-star alignment (named bright star: slew, solve, offset, nudge, sync) | done against fakes: catalog (35 stars), GPS/NMEA parser, Pi-side pointing model, two-star alignment with verification (`session/calibrate.py`); real GPS device binding and push-to-mount over serial pending |
 | 5 Recenter | Solve-and-recenter loop | done (`align/center.py`). A spiral search was considered and dropped, see ADR 0003 |
-| 6 Orchestration | `okapi night` runs the whole sequence; logs and resumable state | |
+| 6 Orchestration | `okapi night` runs the whole sequence; logs and resumable state | done against the simulator (`session/night.py`, ADR 0005): plan files, aiming ahead with re-checks, pointing trim, resume after a crash, cloud/camera/mount failure handling, recalibration, identification, orbit fit at the end |
+| 6b Real-driver wiring | `okapi calibrate --mount-port --gps-port` builds SynScan + gphoto2 + ASTAP + NMEA GPS (`hardware.py`) | done; untested on hardware |
+| 8 Streak astrometry | Sidereal-stare frames: plate-solve, detect satellite streaks, measure endpoints and timestamps, write observations | done against synthetic frames (`astrometry/`): `process_frame` (decode, solve, detect, convert), observation JSON files, `SolveResult.wcs` from ASTAP. Chain frames to orbit tested end to end (GEO: 6 km, 0.5 m/s from five rendered frames). Not yet run on a real ASTAP `.wcs` or a real frame |
+| 9 Orbit determination | Two-body orbit fit to streak observations (`orbits/`): Gauss IOD, range-grid multi-start, weighted least squares with a ground constraint, formal covariance | done against simulated GEO and LEO; no real frames yet. J2 and other perturbations are not modelled, so it is valid for arcs of hours, not days |
 | 7 Bring-up | Hardware-in-the-loop tests (`-m hardware`), tune timing, verify A1-A5 | |
 
 ## Test strategy
@@ -100,6 +106,74 @@ Do these in order; stop and report at the first surprise.
 4. With the area clear, the tube balanced and a hand on the power switch, add
    `OKAPI_TEST_MOTION=1` (stage 2) to find each axis's sign and try a small goto and back. If an
    axis is backwards, construct `SynScanMount(..., az_rate_sign=-1)` (or `alt_rate_sign`).
-5. Point the telescope at a bright star, run `okapi calibrate` once the real drivers are wired in
-   (not yet), and watch whether tracking holds. This answers A6.
+5. Point the telescope at a bright star, run `okapi calibrate --mount-port ... --gps-port ...`, and watch whether tracking holds. This answers A6.
+
+## Sidereal-stare astrometry and orbit determination (planned)
+
+Stare = track at the sidereal rate, so stars are points and a satellite is a streak.
+
+1. **Solve** each frame (existing ASTAP path, but keep the full WCS, not just the center, so any
+   pixel maps to RA/Dec).
+2. **Detect streaks**: subtract background, threshold, find line segments (Hough or
+   Radon / matched line filter), reject hot pixels and cosmic-ray blobs, fit endpoints with
+   sub-pixel accuracy. Needs rawpy full-resolution frames, not the 2x2-binned solver image.
+3. **Timestamp**: exposure start from `FrameMetadata` plus the exposure length; a streak's two
+   endpoints map to shutter open and close only if the object crosses the whole field, so
+   record the streak midpoint time (start + exposure/2) as the primary observation, with endpoints
+   giving the angular rate. Real error source: the T3i's shutter timing over USB (tens of ms of
+   jitter, uncharacterised). A 50 ms error on a LEO object at 1 deg/s is 180 arcsec, which
+   dominates the astrometry, so timing needs measuring (see bring-up) before trusting orbits.
+4. **Observations**: (time, RA, Dec, sigma, rate) per streak, as JSON beside the frame.
+5. **IOD**: Gauss (three well-spaced angle-only observations) and Gooding as a cross-check;
+   candidate dependency: scipy for the refinement, `sgp4` and astropy for validation against TLEs.
+   Angles-only IOD from one short pass is poorly constrained in range; expect large uncertainty
+   unless the arc is long. Using the measured rate (angles plus angular rate) helps a lot.
+6. **Validation without hardware**: simulate a satellite (SGP4 or Keplerian) crossing a synthetic
+   star field, render streaks, run the whole chain, and compare with the truth orbit.
+
+Both LEO and GEO are in scope, with one pipeline. In a sidereal stare a GEO object drifts
+against the stars at about 15 arcsec/s, so in 20 s it is a ~400 px streak that sits inside the
+frame: both ends are shutter open and close, giving a timed point and a rate (`kind="point"`).
+A LEO object crosses the 1 deg field in about a second, so its streak runs off the frame and
+gives a line with an uncertain time (`kind="line"`). Direction along a streak is not recoverable
+from one frame, so the midpoint is the observation. Open: whether to identify objects against
+TLEs, and shutter-timing characterisation.
+
+### Orbit determination results so far (simulation, 1 arcsec astrometry, two-body truth)
+
+| Case | Result |
+|---|---|
+| GEO, five 20 s stares over 2 h (point observations) | 1.2 km and 0.2 m/s off, formal sigma 12 / 4 / 1 km, chi-squared 0.64 |
+| GEO, 1 s constant shutter-timing bias | about 3 km along-track (GEO speed times bias), so timing matters little at GEO |
+| LEO, ten 0.2 s frames over 30 s (point observations) | 11 km off but formal sigma about 250 km: range is not determined by one short pass; flagged "poorly conditioned" |
+| LEO, five 10 s frames, field-crossing lines | worse conditioned still; lines carry much less information than timed points |
+
+What this means for the T3i: 10-20 s sidereal stares suit GEO well. For LEO the 10-20 s exposures give
+lines, and a single pass cannot fix the orbit; more passes would need perturbation modelling (J2)
+or shorter exposures. Not yet connected: a night-long run that captures frames and writes observation files as it
+goes, TLE identification, and a real-timing measurement of the camera shutter. Unverified
+against real data: the WCS ASTAP writes (the pipeline works on the 2x2-binned frame the solver
+sees, so streak positions are in that grid; SIP distortion terms, if ASTAP writes them, are
+ignored by the straight pixel mapping used for streak endpoints).
+
+## Using it
+
+    uv run okapi night plan.json --dry-run --out data/demo        # whole night, simulated
+    uv run okapi night plan.json --mount-port /dev/ttyUSB0 --gps-port /dev/ttyACM0 \
+        --fallback-lat 40.0 --fallback-lon -105.3 --out data/2026-11-21
+    uv run okapi orbit data/2026-11-21/raw/2026/11/21/*.obs.json --lat 40 --lon -105.3
+
+Re-running the same `night` command with the same `--out` resumes. A plan lists targets (kinds:
+`geo`, `star`, `fixed`, `tle`) with `count`, `interval_s`, `exposure_s`, `iso`, `start_offset_s`;
+see `session/plan.py` for the format.
+
+## What is still unverified on real hardware
+
+Everything in the bring-up checklist, plus: ASTAP's `.wcs` layout and distortion terms (the streak
+positions use a plain pixel mapping); the T3i's shutter delay and exposure timing over USB;
+whether 20 s exposures at ISO 1600 show GEO satellites (limiting magnitude is untested: the
+simulator renders streaks at a fixed brightness); focus at the Dobsonian's prime focus; the star
+brightness check that was in the original request (alignment relies on the plate solve alone, and
+the verification slew measures the result, but nothing estimates a star's magnitude from the
+frame).
 

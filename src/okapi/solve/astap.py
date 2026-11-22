@@ -122,8 +122,8 @@ def write_fits(
     hdu.writeto(path)
 
 
-def parse_wcs(text: str, width: int, height: int) -> SkyCoord:
-    """Sky position of the image center from the text of an ASTAP ``.wcs`` file."""
+def read_wcs(text: str) -> WCS:
+    """The celestial WCS in the text of an ASTAP ``.wcs`` file."""
     text = text.strip("\x00 \r\n")
     try:
         with warnings.catch_warnings():
@@ -132,6 +132,15 @@ def parse_wcs(text: str, width: int, height: int) -> SkyCoord:
             wcs = WCS(header, naxis=2)
         if not wcs.has_celestial:
             raise ValueError("no celestial WCS")
+        return wcs
+    except Exception as e:
+        raise SolveError(f"could not read ASTAP's WCS output: {e}") from e
+
+
+def parse_wcs(text: str, width: int, height: int) -> SkyCoord:
+    """Sky position of the image center from the text of an ASTAP ``.wcs`` file."""
+    wcs = read_wcs(text)
+    try:
         return wcs.pixel_to_world((width - 1) / 2, (height - 1) / 2).icrs
     except Exception as e:
         raise SolveError(f"could not read ASTAP's WCS output: {e}") from e
@@ -182,6 +191,11 @@ class AstapSolver:
             argv += ["-r", "180"]
         return argv
 
+    @property
+    def decoder(self) -> Decoder:
+        """The frame decoder; its output is the pixel grid that ``SolveResult.wcs`` describes."""
+        return self._decode
+
     def solve(self, image: CapturedImage) -> SolveResult:
         data = self._decode(image)
         height, width = data.shape
@@ -202,8 +216,9 @@ class AstapSolver:
                 if last.returncode == 0:
                     if not wcs_path.exists():
                         raise SolveError("ASTAP reported success but wrote no .wcs file")
-                    center = parse_wcs(wcs_path.read_text(errors="replace"), width, height)
-                    return SolveResult(center=center)
+                    text = wcs_path.read_text(errors="replace")
+                    center = parse_wcs(text, width, height)
+                    return SolveResult(center=center, wcs=read_wcs(text))
                 if last.returncode in UNRECOVERABLE:
                     break
         reason = EXIT_MESSAGES.get(last.returncode, f"ASTAP exited with code {last.returncode}")

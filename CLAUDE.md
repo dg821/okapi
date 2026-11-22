@@ -17,4 +17,7 @@ Read PROJECT_PLAN.md before large changes; assumptions A1-A5 there are unverifie
 - Every new fake behavior and every driver command needs a test. Hardware-only tests get
   `@pytest.mark.hardware`.
 - Record non-obvious decisions as ADRs in docs/decisions/.
+- Night code is tested end to end through `okapi.sim_night` (a camera that renders stars and
+  satellite streaks); add a simulator behavior and a test for every failure the real night can hit.
+- Orbit numerics are plain floats in km, s, rad (GCRS); astropy units appear at the boundary.
 - Captured data in data/ is never committed.
