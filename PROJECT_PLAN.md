@@ -172,8 +172,11 @@ see `session/plan.py` for the format.
 Everything in the bring-up checklist, plus: ASTAP's `.wcs` layout and distortion terms (the streak
 positions use a plain pixel mapping); the T3i's shutter delay and exposure timing over USB;
 whether 20 s exposures at ISO 1600 show GEO satellites (limiting magnitude is untested: the
-simulator renders streaks at a fixed brightness); focus at the Dobsonian's prime focus; the star
-brightness check that was in the original request (alignment relies on the plate solve alone, and
-the verification slew measures the result, but nothing estimates a star's magnitude from the
-frame).
+simulator renders streaks at a fixed brightness); focus at the Dobsonian's prime focus; the brightness
+calibration (`astrometry/photometry.py`: zero point from catalog stars, satellite magnitude, limiting
+magnitude) exists and is tested on simulated frames only. It is not yet called by `okapi night`, and
+the catalog's bright stars may saturate a 20 s frame, leaving no usable reference.
 
+
+Preflight and calibration helpers added: `okapi doctor` (checks the rig), `okapi timing` (shutter
+delay from a known satellite), `docs/pi-setup.md`.

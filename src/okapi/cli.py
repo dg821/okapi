@@ -11,7 +11,10 @@ import typer
 from astropy.time import Time
 
 from okapi import __version__
+from okapi import doctor as doc
 from okapi.astrometry.observation import Observation, read_observations
+from okapi.astrometry.timing import TimingError, estimate_time_offset
+from okapi.camera.gphoto import run_gphoto2
 from okapi.clock import SystemClock
 from okapi.coords import site_from_geodetic
 from okapi.hardware import make_hardware_rig
@@ -20,13 +23,14 @@ from okapi.mount.synscan import SynScanMount
 from okapi.mount.transport import SerialTransport
 from okapi.orbits.fit import OrbitFitError, determine_orbit
 from okapi.orbits.simulate import geo_state
+from okapi.sensors.nmea import NmeaGps
 from okapi.session.calibrate import CalibrationError
 from okapi.session.calibrate import calibrate as run_calibration
 from okapi.session.night import format_report, run_night
 from okapi.session.plan import NightPlan, PlanError, load_plan
 from okapi.sim import make_sim_rig, make_synscan_rig
 from okapi.sim_night import decode_npy, make_night_rig
-from okapi.targets import GeoSlotTarget, StateTarget, Target, TleTarget
+from okapi.targets import GeoSlotTarget, StateTarget, Target, TleTarget, parse_tles
 
 app = typer.Typer(
     help="Control the Orion XT10g telescope and Canon T3i camera.", no_args_is_help=True
@@ -343,3 +347,79 @@ def orbit(
     typer.echo(f"chi2 reduced: {sol.chi2_reduced:.2f}")
     for w in sol.warnings:
         typer.echo(f"warning: {w}")
+
+
+@app.command()
+def doctor(
+    mount_port: str = typer.Option("", help="Handset serial port (skipped if empty)"),
+    gps_port: str = typer.Option("", help="GPS serial port (skipped if empty)"),
+    astap_path: str = typer.Option("astap", help="ASTAP executable"),
+    data_dir: Path = typer.Option(Path("data"), help="Where frames will be stored"),
+    skip_camera: bool = typer.Option(False, help="Do not look for the camera"),
+) -> None:
+    """Preflight: check each part of the rig and say what to fix. Moves nothing, takes no frames."""
+    import serial
+
+    checks = [doc.check_architecture()]
+    if not skip_camera:
+        checks.append(doc.check_camera(run_gphoto2))
+    if gps_port:
+        try:
+            port = serial.serial_for_url(gps_port, baudrate=9600, timeout=2.0)
+        except (OSError, serial.SerialException) as e:
+            checks.append(doc.Check("gps", doc.FAIL, str(e), "check the port name and permissions"))
+        else:
+            gps = NmeaGps(lambda: port.readline().decode("ascii", errors="ignore"))
+            checks += doc.check_gps(gps, SystemClock())
+            port.close()
+    if mount_port:
+
+        def read() -> Any:
+            m = SynScanMount(SerialTransport(mount_port), SystemClock())
+            try:
+                return m.read_report()
+            finally:
+                m._t.close()
+
+        checks.append(doc.check_mount(read))
+    checks.append(doc.check_astap(astap_path))
+    data_dir.mkdir(parents=True, exist_ok=True)
+    checks.append(doc.check_disk(data_dir))
+    typer.echo(doc.format_checks(checks))
+    if any(c.status == doc.FAIL for c in checks):
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def timing(
+    files: list[Path] = typer.Argument(..., help="*.obs.json files of one known satellite"),
+    tle: Path = typer.Option(..., help="TLE file (fresh: LEO TLEs go stale in days)"),
+    name: str = typer.Option("", help="Satellite name in the TLE file (default: the only one)"),
+    lat: float = typer.Option(..., help="Observer latitude, deg"),
+    lon: float = typer.Option(..., help="Observer longitude, deg (east +)"),
+    height: float = typer.Option(0.0, help="Observer height, metres"),
+) -> None:
+    """Estimate the shutter delay from streaks of a satellite with a known orbit (e.g. the ISS)."""
+    try:
+        targets = parse_tles(tle.read_text())
+        observations: list[Observation] = []
+        for f in files:
+            observations += read_observations(f)
+    except (OSError, ValueError, KeyError) as e:
+        typer.echo(f"cannot read input: {e}", err=True)
+        raise typer.Exit(code=2) from e
+    chosen = [t for t in targets if not name or name.lower() in t.name.lower()]
+    if len(chosen) != 1:
+        typer.echo(f"need exactly one satellite in the TLE file, matched {len(chosen)}", err=True)
+        raise typer.Exit(code=2)
+    try:
+        res = estimate_time_offset(observations, chosen[0], site_from_geodetic(lat, lon, height))
+    except TimingError as e:
+        typer.echo(f"no estimate: {e}", err=True)
+        raise typer.Exit(code=1) from e
+    typer.echo(f"frames used: {res.n}")
+    typer.echo(
+        f"shutter offset: {res.offset.to_value(u.s):+.3f} s "
+        f"(scatter {res.scatter.to_value(u.s):.3f} s)"
+    )
+    typer.echo("positive = the shutter opened later than the recorded start time")

@@ -21,3 +21,6 @@ A night, end to end (simulated here; drop `--dry-run` and add the ports on the r
     uv run okapi orbit data/demo/raw/*/*/*/*.obs.json --lat 40 --lon -105
 
 See PROJECT_PLAN.md for the plan-file format and what is still unverified on hardware.
+
+Before the first night: `docs/pi-setup.md`, then `uv run okapi doctor --mount-port ... --gps-port ...`
+checks every part of the rig. `okapi timing` measures the shutter delay from a known satellite.
