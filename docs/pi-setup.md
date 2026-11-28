@@ -24,10 +24,14 @@ uv sync --extra raw
   and `sudo apt remove modemmanager` if present.
 
 ## 4. ASTAP (plate solver)
-- Download the **command-line** ASTAP for Linux arm64 from the ASTAP site (hnsky.org/astap.htm)
-  and the **D50** star database. Put the binary on the PATH (e.g. `/usr/local/bin/astap`) and the
-  database files in the same folder (or `/opt/astap`).
-- Check: `astap -h` prints usage. `uv run okapi doctor` reports the database.
+- From hnsky.org/astap.htm, row "Linux 64 bit arm", download the Debian **.deb** (GTK2) and the
+  **D50 (debian)** star database `.deb` (about 830 MB: download on the Mac and `scp` it over, or
+  use `wget -c` inside tmux).
+- `sudo apt install ./astap.deb ./d50_star_database.deb` (keep the `./`).
+- The GUI program `/opt/astap/astap` needs desktop libraries and will not run on Lite. The package
+  also installs **`/opt/astap/astap_cli`**, which is what okapi uses (its default is `astap_cli`):
+  `sudo ln -sf /opt/astap/astap_cli /usr/local/bin/astap_cli`.
+- Check: `astap_cli -h` prints usage. `uv run okapi doctor` reports the database.
 
 ## 5. Clock
 Frame timestamps come from the Pi's system clock, and a Pi has no battery clock. Needs either

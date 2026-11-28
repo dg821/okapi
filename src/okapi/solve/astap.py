@@ -153,7 +153,7 @@ class AstapSolver:
         hint: Callable[[], SkyCoord | None] | None = None,
         run: Runner = run_astap,
         decode: Decoder | None = None,
-        astap_path: str = "astap",
+        astap_path: str = "astap_cli",
         optics: Optics | None = None,
         binning: int = 2,
         fov_height: u.Quantity | None = None,

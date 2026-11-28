@@ -55,7 +55,7 @@ def make_hardware_rig(
     gps_port: str,
     exposure: u.Quantity = 2 * u.s,
     iso: int = 1600,
-    astap_path: str = "astap",
+    astap_path: str = "astap_cli",
     gps_baud: int = 9600,
 ) -> HardwareRig:
     clock = SystemClock()
