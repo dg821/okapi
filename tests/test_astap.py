@@ -155,7 +155,7 @@ def test_hinted_solve_command_line_and_result():
     hint = SkyCoord(ra=15 * u.deg, dec=-20 * u.deg)  # 1 h, spd 70
     result = solver(run, hint=lambda: hint).solve(image())
     argv, timeout = run.calls[0]
-    assert argv[0] == "astap"
+    assert argv[0] == "astap_cli"
     assert flag(argv, "-ra") == "1.00000"
     assert flag(argv, "-spd") == "70.0000"
     assert flag(argv, "-r") == "10"

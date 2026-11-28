@@ -57,7 +57,7 @@ def calibrate(
     gps_port: str = typer.Option("", help="GPS NMEA serial device, e.g. /dev/ttyACM0"),
     exposure: float = typer.Option(2.0, help="Alignment exposure, seconds"),
     iso: int = typer.Option(1600, help="Alignment ISO"),
-    astap_path: str = typer.Option("astap", help="ASTAP executable"),
+    astap_path: str = typer.Option("astap_cli", help="ASTAP command-line executable"),
     fallback_lat: float | None = typer.Option(None, help="Site latitude if GPS has no fix, deg"),
     fallback_lon: float | None = typer.Option(None, help="Site longitude (east +), deg"),
     fallback_height: float = typer.Option(0.0, help="Site height, metres"),
@@ -264,7 +264,7 @@ def night(
     dry_run: bool = typer.Option(False, "--dry-run", help="Run the whole night in simulation."),
     mount_port: str = typer.Option("", help="Hand control serial device"),
     gps_port: str = typer.Option("", help="GPS NMEA serial device"),
-    astap_path: str = typer.Option("astap", help="ASTAP executable"),
+    astap_path: str = typer.Option("astap_cli", help="ASTAP command-line executable"),
     fallback_lat: float | None = typer.Option(None, help="Site latitude if GPS has no fix"),
     fallback_lon: float | None = typer.Option(None, help="Site longitude (east +)"),
     fallback_height: float = typer.Option(0.0, help="Site height, metres"),
@@ -353,7 +353,7 @@ def orbit(
 def doctor(
     mount_port: str = typer.Option("", help="Handset serial port (skipped if empty)"),
     gps_port: str = typer.Option("", help="GPS serial port (skipped if empty)"),
-    astap_path: str = typer.Option("astap", help="ASTAP executable"),
+    astap_path: str = typer.Option("astap_cli", help="ASTAP command-line executable"),
     data_dir: Path = typer.Option(Path("data"), help="Where frames will be stored"),
     skip_camera: bool = typer.Option(False, help="Do not look for the camera"),
 ) -> None:
